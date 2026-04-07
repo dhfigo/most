@@ -1,4 +1,3 @@
-[team_stats (3).html](https://github.com/user-attachments/files/26528234/team_stats.3.html)
 <!DOCTYPE html>
 <html lang="ko">
 <head>
