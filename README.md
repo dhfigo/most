@@ -150,6 +150,9 @@ body {
 /* ─── 테이블 래퍼 ─────────────────────── */
 .tbl-wrap {
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 420px;
+  position: relative;
   -webkit-overflow-scrolling: touch;
 }
 .tbl-wrap::-webkit-scrollbar { height: 6px; }
@@ -270,6 +273,90 @@ td.sum.lbl, td.tot.lbl { text-align: left; }
 .role-tl { background: #2c3e50; color: #ffffff; }
 .role-pl { background: #3c3489; color: #ffffff; }
 
+/* ─── 틀 고정 — 3-panel 레이아웃 ─────────── */
+/*
+  구조: .freeze-wrap
+    ├ .f-left  (팀/파트[/성명] 고정 테이블 — 좌측)
+    ├ .f-mid   (월별 스크롤 영역 — 중앙)
+    └ .f-right (연간 고정 테이블 — 우측)
+  세 패널 모두 동일한 행 높이를 공유하므로 정렬이 깨지지 않음
+*/
+
+.freeze-wrap {
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  max-height: 420px;
+}
+
+/* 좌측 고정 */
+.f-left {
+  flex-shrink: 0;
+  overflow: hidden;
+  z-index: 3;
+  border-right: 2px solid #9ba8bc;
+  background: #fff;
+}
+
+/* 중앙 스크롤 */
+.f-mid {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  min-width: 0;
+}
+.f-mid::-webkit-scrollbar { height: 6px; width: 6px; }
+.f-mid::-webkit-scrollbar-track { background: #f0f0f0; }
+.f-mid::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
+
+/* 우측 고정 */
+.f-right {
+  flex-shrink: 0;
+  overflow: hidden;
+  z-index: 3;
+  border-left: 2px solid #c8a8b8;
+  background: #fff;
+}
+
+/* 패널 내 테이블 공통 */
+.f-left table,
+.f-mid table,
+.f-right table {
+  border-collapse: collapse;
+  white-space: nowrap;
+  font-size: 11px;
+  table-layout: fixed;
+}
+
+/* 상단 행 고정 — 세 패널 모두 */
+.f-left thead th,
+.f-mid  thead th,
+.f-right thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+/* 스크롤 동기화: f-left / f-right 는 JS로 scrollTop 동기화 */
+
+/* 좌측 고정 컬럼 배경 */
+.f-left th { background: #e3e6ea; color: #263238; }
+.f-left td { background: #e3e6ea; }
+.f-left tr.t-team td { background: var(--team-bg) !important; }
+.f-left tr.t-part td { background: var(--part-bg) !important; }
+.f-left tr.t-pers td { background: #fff !important; }
+.f-left tr.r-sum td  { background: var(--sum-bg) !important; }
+.f-left tr.r-tot td  { background: var(--tot-bg) !important; }
+
+/* 우측 고정 컬럼 배경 */
+.f-right th { background: var(--yr-bg); color: var(--yr-text); }
+.f-right td { background: var(--yr-bg); }
+.f-right tr.t-team td { background: #dce0f0 !important; }
+.f-right tr.t-part td { background: #e8e8f5 !important; }
+.f-right tr.t-pers td { background: var(--yr-bg) !important; }
+.f-right tr.r-sum td  { background: #f0e6ec !important; }
+.f-right tr.r-tot td  { background: #f5e8c8 !important; }
+
 /* 스크롤바 thin */
 * { scrollbar-width: thin; scrollbar-color: #c0c0c0 #f0f0f0; }
 </style>
@@ -308,22 +395,46 @@ td.sum.lbl, td.tot.lbl { text-align: left; }
     <div class="title">□ 실적 현황 (<span id="yr1">2026</span>년) — 1월~12월 월별</div>
     <button class="btn btn-green btn-sm" onclick="downloadExcel('summary')">↓ 엑셀 다운로드 (실적현황 전체)</button>
   </div>
-  <div class="tbl-wrap">
-    <table id="summaryTable" style="min-width:2200px;">
-      <thead>
-        <tr>
-          <th class="fix" rowspan="2" style="width:44px;min-width:44px;">팀</th>
-          <th class="fix" rowspan="2" style="width:82px;min-width:82px;">파트</th>
-          <th class="mo" colspan="3">1월</th><th class="mo" colspan="3">2월</th><th class="mo" colspan="3">3월</th>
-          <th class="mo" colspan="3">4월</th><th class="mo" colspan="3">5월</th><th class="mo" colspan="3">6월</th>
-          <th class="mo" colspan="3">7월</th><th class="mo" colspan="3">8월</th><th class="mo" colspan="3">9월</th>
-          <th class="mo" colspan="3">10월</th><th class="mo" colspan="3">11월</th><th class="mo" colspan="3">12월</th>
-          <th class="yr" colspan="3">연간</th>
-        </tr>
-        <tr id="moHdRow"></tr>
-      </thead>
-      <tbody id="summaryBody"></tbody>
-    </table>
+  <div class="freeze-wrap" id="sumWrap">
+    <!-- 좌측 고정: 팀, 파트 -->
+    <div class="f-left" id="sumLeft">
+      <table style="width:126px;">
+        <thead>
+          <tr><th style="width:44px;" rowspan="2">팀</th><th style="width:82px;" rowspan="2">파트</th></tr>
+          <tr></tr>
+        </thead>
+        <tbody id="sumLeftBody"></tbody>
+      </table>
+    </div>
+    <!-- 중앙 스크롤: 1~12월 -->
+    <div class="f-mid" id="sumMid">
+      <table id="summaryTable" style="min-width:1980px;">
+        <thead>
+          <tr>
+            <th class="mo" colspan="3">1월</th><th class="mo" colspan="3">2월</th><th class="mo" colspan="3">3월</th>
+            <th class="mo" colspan="3">4월</th><th class="mo" colspan="3">5월</th><th class="mo" colspan="3">6월</th>
+            <th class="mo" colspan="3">7월</th><th class="mo" colspan="3">8월</th><th class="mo" colspan="3">9월</th>
+            <th class="mo" colspan="3">10월</th><th class="mo" colspan="3">11월</th><th class="mo" colspan="3">12월</th>
+          </tr>
+          <tr id="moHdRow"></tr>
+        </thead>
+        <tbody id="summaryBody"></tbody>
+      </table>
+    </div>
+    <!-- 우측 고정: 연간 -->
+    <div class="f-right" id="sumRight">
+      <table style="width:174px;">
+        <thead>
+          <tr><th class="yr" colspan="3">연간</th></tr>
+          <tr>
+            <th class="yr" style="width:58px;">목표</th>
+            <th class="yr" style="width:58px;">실적</th>
+            <th class="yr" style="width:58px;">달성</th>
+          </tr>
+        </thead>
+        <tbody id="sumRightBody"></tbody>
+      </table>
+    </div>
   </div>
   <div class="legend">
     <span style="font-weight:500;color:#555;">달성률:</span>
@@ -509,31 +620,39 @@ function moCell(m, cls='') {
 let currentYear = 2026;
 let currentData = [];
 
-// ─── 실적현황 테이블 빌드 ──────────────────────────────────────────
+// ─── 3패널 세로 스크롤 동기화 ─────────────────────────────────────
+function syncScroll(prefix) {
+  const mid   = document.getElementById(prefix+'Mid');
+  const left  = document.getElementById(prefix+'Left');
+  const right = document.getElementById(prefix+'Right');
+  if (!mid) return;
+  mid.addEventListener('scroll', () => {
+    if (left)  left.scrollTop  = mid.scrollTop;
+    if (right) right.scrollTop = mid.scrollTop;
+  });
+}
+
+// ─── 실적현황 테이블 빌드 — 3패널 ────────────────────────────────
 function buildSummary(data) {
-  // 월 헤더 2행
   const hdRow = document.getElementById('moHdRow');
   let hdHTML = '';
   for(let i=0;i<12;i++) hdHTML += `<th class="mo">목표</th><th class="mo">실적</th><th class="mo">달성</th>`;
-  hdHTML += `<th class="yr">목표</th><th class="yr">실적</th><th class="yr">달성</th>`;
   hdRow.innerHTML = hdHTML;
 
   const teams = [...new Set(data.map(d=>d.team))];
-  let html = '';
+  let lHTML='', mHTML='', rHTML='';
 
   for (const team of teams) {
     const parts = data.filter(d=>d.team===team);
 
-    // 파트별 행
     for (const p of parts) {
-      html += `<tr>`;
-      html += `<td class="lbl">${p.team}</td><td class="sub">${p.part}</td>`;
-      for (const m of p.monthly) html += moCell(m);
-      html += `<td style="text-align:right">${fmt(p.yg)}</td><td style="text-align:right">${fmt(p.ya)}</td><td style="text-align:right">${pctStr(p.yg,p.ya)}</td>`;
-      html += `</tr>`;
+      lHTML += `<tr><td class="lbl">${p.team}</td><td class="sub">${p.part}</td></tr>`;
+      mHTML += `<tr>`;
+      for (const m of p.monthly) mHTML += moCell(m);
+      mHTML += `</tr>`;
+      rHTML += `<tr><td style="text-align:right">${fmt(p.yg)}</td><td style="text-align:right">${fmt(p.ya)}</td><td style="text-align:right">${pctStr(p.yg,p.ya)}</td></tr>`;
     }
 
-    // 팀 소계
     const sum12 = Array.from({length:12},(_,i)=>{
       const mArr = parts.map(p=>p.monthly[i]);
       if(mArr.every(m=>m===null)) return null;
@@ -541,14 +660,11 @@ function buildSummary(data) {
     });
     const syg = parts.reduce((s,p)=>s+p.yg,0);
     const sya = parts.reduce((s,p)=>s+p.ya,0);
-    html += `<tr>`;
-    html += `<td class="lbl sum" colspan="2">${team} 소계</td>`;
-    for (const m of sum12) html += moCell(m,'sum');
-    html += `<td class="sum" style="text-align:right">${fmt(syg)}</td><td class="sum" style="text-align:right">${fmt(sya)}</td><td class="sum" style="text-align:right">${pctStr(syg,sya)}</td>`;
-    html += `</tr>`;
+    lHTML += `<tr class="r-sum"><td class="lbl sum" colspan="2">${team} 소계</td></tr>`;
+    mHTML += `<tr class="r-sum">`; for(const m of sum12) mHTML += moCell(m,'sum'); mHTML += `</tr>`;
+    rHTML += `<tr class="r-sum"><td class="sum" style="text-align:right">${fmt(syg)}</td><td class="sum" style="text-align:right">${fmt(sya)}</td><td class="sum" style="text-align:right">${pctStr(syg,sya)}</td></tr>`;
   }
 
-  // 전체 합계
   const all12 = Array.from({length:12},(_,i)=>{
     const mArr = data.map(p=>p.monthly[i]);
     if(mArr.every(m=>m===null)) return null;
@@ -556,13 +672,14 @@ function buildSummary(data) {
   });
   const tyg = data.reduce((s,p)=>s+p.yg,0);
   const tya = data.reduce((s,p)=>s+p.ya,0);
-  html += `<tr>`;
-  html += `<td class="lbl tot" colspan="2">합계</td>`;
-  for (const m of all12) html += moCell(m,'tot');
-  html += `<td class="tot" style="text-align:right">${fmt(tyg)}</td><td class="tot" style="text-align:right">${fmt(tya)}</td><td class="tot" style="text-align:right">${pctStr(tyg,tya)}</td>`;
-  html += `</tr>`;
+  lHTML += `<tr class="r-tot"><td class="lbl tot" colspan="2">합계</td></tr>`;
+  mHTML += `<tr class="r-tot">`; for(const m of all12) mHTML += moCell(m,'tot'); mHTML += `</tr>`;
+  rHTML += `<tr class="r-tot"><td class="tot" style="text-align:right">${fmt(tyg)}</td><td class="tot" style="text-align:right">${fmt(tya)}</td><td class="tot" style="text-align:right">${pctStr(tyg,tya)}</td></tr>`;
 
-  document.getElementById('summaryBody').innerHTML = html;
+  document.getElementById('sumLeftBody').innerHTML  = lHTML;
+  document.getElementById('summaryBody').innerHTML  = mHTML;
+  document.getElementById('sumRightBody').innerHTML = rHTML;
+  syncScroll('sum');
 }
 
 // ─── 팀별 상세 아코디언 빌드 ──────────────────────────────────────
@@ -598,17 +715,46 @@ function buildAccordion(data) {
     teamContent.className = 'team-content open';
     teamContent.id = 'tc_' + team;
 
-    // 상세 테이블
-    const wrap = document.createElement('div');
-    wrap.className = 'tbl-wrap';
+    // 3패널 구조
+    const fWrap = document.createElement('div');
+    fWrap.className = 'freeze-wrap';
+    fWrap.id = 'fw_'+team;
+    fWrap.style.maxHeight = '380px';
 
-    let tblHTML = `<table class="dtbl" style="min-width:2200px;"><thead>
-      <tr>
-        <th style="width:40px">팀</th><th style="width:80px">파트</th><th style="width:100px">성명</th>`;
-    for(let i=0;i<12;i++) tblHTML += `<th class="mo" colspan="3">${MONTHS[i]}</th>`;
-    tblHTML += `<th class="yr" colspan="3">연간</th></tr><tr><th></th><th></th><th></th>`;
-    for(let i=0;i<12;i++) tblHTML += `<th class="mo">목표</th><th class="mo">실적</th><th class="mo">달성</th>`;
-    tblHTML += `<th class="yr">목표</th><th class="yr">실적</th><th class="yr">달성</th></tr></thead><tbody>`;
+    // 좌측: 팀, 파트, 성명
+    const fLeft = document.createElement('div');
+    fLeft.className = 'f-left'; fLeft.id = 'dl_'+team;
+    fLeft.innerHTML = `<table style="width:220px;" class="dtbl">
+      <thead>
+        <tr><th style="width:40px" rowspan="2">팀</th><th style="width:80px" rowspan="2">파트</th><th style="width:100px" rowspan="2">성명</th></tr>
+        <tr></tr>
+      </thead>
+      <tbody id="dlb_${team}"></tbody></table>`;
+
+    // 중앙: 1~12월
+    const fMid = document.createElement('div');
+    fMid.className = 'f-mid'; fMid.id = 'dm_'+team;
+    let midHd = `<table class="dtbl" style="min-width:1980px;"><thead><tr>`;
+    for(let i=0;i<12;i++) midHd += `<th class="mo" colspan="3">${MONTHS[i]}</th>`;
+    midHd += `</tr><tr>`;
+    for(let i=0;i<12;i++) midHd += `<th class="mo">목표</th><th class="mo">실적</th><th class="mo">달성</th>`;
+    midHd += `</tr></thead><tbody id="dmb_${team}"></tbody></table>`;
+    fMid.innerHTML = midHd;
+
+    // 우측: 연간
+    const fRight = document.createElement('div');
+    fRight.className = 'f-right'; fRight.id = 'dr_'+team;
+    fRight.innerHTML = `<table style="width:174px;" class="dtbl">
+      <thead>
+        <tr><th class="yr" colspan="3">연간</th></tr>
+        <tr><th class="yr" style="width:58px;">목표</th><th class="yr" style="width:58px;">실적</th><th class="yr" style="width:58px;">달성</th></tr>
+      </thead>
+      <tbody id="drb_${team}"></tbody></table>`;
+
+    fWrap.appendChild(fLeft); fWrap.appendChild(fMid); fWrap.appendChild(fRight);
+
+    // 데이터 채우기
+    let llHTML='', mmHTML='', rrHTML='';
 
     // 팀 합계행
     const teamSum12 = Array.from({length:12},(_,i)=>{
@@ -618,37 +764,44 @@ function buildAccordion(data) {
     });
     const tsyg = parts.reduce((s,p)=>s+p.yg,0);
     const tsya = parts.reduce((s,p)=>s+p.ya,0);
-    tblHTML += `<tr class="t-team"><td class="tlbl">${team}</td><td class="tlbl">전체</td><td class="tlbl">팀 합계</td>`;
-    for(const m of teamSum12) tblHTML += moCell(m);
-    tblHTML += `<td style="text-align:right">${fmt(tsyg)}</td><td style="text-align:right">${fmt(tsya)}</td><td style="text-align:right">${pctStr(tsyg,tsya)}</td></tr>`;
+    llHTML += `<tr class="t-team"><td class="tlbl">${team}</td><td class="tlbl">전체</td><td class="tlbl">팀 합계</td></tr>`;
+    mmHTML += `<tr class="t-team">`; for(const m of teamSum12) mmHTML += moCell(m); mmHTML += `</tr>`;
+    rrHTML += `<tr class="t-team"><td style="text-align:right">${fmt(tsyg)}</td><td style="text-align:right">${fmt(tsya)}</td><td style="text-align:right">${pctStr(tsyg,tsya)}</td></tr>`;
 
-    // 파트별
     for (const part of parts) {
       const key = `${team}_${part.part}`;
       const persons = PERSONS[key] || [];
 
       // 파트 소계
-      tblHTML += `<tr class="t-part"><td class="tlbl">${team}</td><td class="tsub">${part.part}</td><td class="tsub">파트 소계</td>`;
-      for(const m of part.monthly) tblHTML += moCell(m);
-      tblHTML += `<td style="text-align:right;font-weight:600">${fmt(part.yg)}</td><td style="text-align:right;font-weight:600">${fmt(part.ya)}</td><td style="text-align:right">${pctStr(part.yg,part.ya)}</td></tr>`;
+      llHTML += `<tr class="t-part"><td class="tlbl">${team}</td><td class="tsub">${part.part}</td><td class="tsub">파트 소계</td></tr>`;
+      mmHTML += `<tr class="t-part">`; for(const m of part.monthly) mmHTML += moCell(m); mmHTML += `</tr>`;
+      rrHTML += `<tr class="t-part"><td style="text-align:right;font-weight:600">${fmt(part.yg)}</td><td style="text-align:right;font-weight:600">${fmt(part.ya)}</td><td style="text-align:right">${pctStr(part.yg,part.ya)}</td></tr>`;
 
-      // 개인별 — sortPersons로 팀장→파트장→성ㄱㄴㄷ 정렬
+      // 개인별
       for (const person of sortPersons(persons)) {
         const pm12 = part.monthly.map(m => m ? {g:Math.round(m.g*person.ratio), a:Math.round(m.a*person.ratio)} : null);
         const pyg = Math.round(part.yg * person.ratio);
         const pya = Math.round(part.ya * person.ratio);
-        tblHTML += `<tr class="t-pers"><td class="tlbl" style="color:var(--muted)">${team}</td><td class="tpsn">${part.part}</td><td class="tpsn">${person.name}${roleBadge(person.role)}</td>`;
-        for(const m of pm12) tblHTML += moCell(m);
-        tblHTML += `<td style="text-align:right">${fmt(pyg)}</td><td style="text-align:right">${fmt(pya)}</td><td style="text-align:right">${pctStr(pyg,pya)}</td></tr>`;
+        llHTML += `<tr class="t-pers"><td class="tlbl" style="color:var(--muted)">${team}</td><td class="tpsn">${part.part}</td><td class="tpsn">${person.name}${roleBadge(person.role)}</td></tr>`;
+        mmHTML += `<tr class="t-pers">`; for(const m of pm12) mmHTML += moCell(m); mmHTML += `</tr>`;
+        rrHTML += `<tr class="t-pers"><td style="text-align:right">${fmt(pyg)}</td><td style="text-align:right">${fmt(pya)}</td><td style="text-align:right">${pctStr(pyg,pya)}</td></tr>`;
       }
     }
 
-    tblHTML += `</tbody></table>`;
-    wrap.innerHTML = tblHTML;
-    teamContent.appendChild(wrap);
+    fWrap.querySelector(`#dlb_${team}`).innerHTML = llHTML;
+    fWrap.querySelector(`#dmb_${team}`).innerHTML = mmHTML;
+    fWrap.querySelector(`#drb_${team}`).innerHTML = rrHTML;
+
+    teamContent.appendChild(fWrap);
     teamBlock.appendChild(teamHd);
     teamBlock.appendChild(teamContent);
     acc.appendChild(teamBlock);
+
+    // 세로 스크롤 동기화
+    fMid.addEventListener('scroll', () => {
+      fLeft.scrollTop  = fMid.scrollTop;
+      fRight.scrollTop = fMid.scrollTop;
+    });
   }
 }
 
